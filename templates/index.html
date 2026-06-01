@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL Query Agent</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,300&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #0f1318;
+    --surface2: #161b24;
+    --border: #1e2733;
+    --border2: #2a3545;
+    --green: #00ff88;
+    --green-dim: #00cc6a;
+    --green-muted: rgba(0,255,136,0.08);
+    --cyan: #00d4ff;
+    --cyan-dim: #0099cc;
+    --yellow: #ffd700;
+    --orange: #ff8c42;
+    --red: #ff4444;
+    --red-muted: rgba(255,68,68,0.08);
+    --text: #c8d8e8;
+    --text-dim: #6a7f94;
+    --text-dimmer: #3a4f62;
+    --accent: #00ff88;
+    --mono: 'JetBrains Mono', monospace;
+    --display: 'Syne', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* Grid background */
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 20px 60px;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 28px 0 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 28px;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 14px;
+  }
+  .logo-icon {
+    width: 44px; height: 44px;
+    background: var(--green-muted);
+    border: 1px solid rgba(0,255,136,0.25);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+  }
+  .logo-text { display: flex; flex-direction: column; gap: 2px; }
+  .logo-title {
+    font-family: var(--display);
+    font-weight: 800;
+    font-size: 20px;
+    color: #fff;
+    letter-spacing: -0.5px;
+  }
+  .logo-subtitle {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .status-bar {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* Schema pill */
+  .schema-toggle {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11px; font-family: var(--mono);
+    color: var(--cyan-dim);
+    background: rgba(0,212,255,0.06);
+    border: 1px solid rgba(0,212,255,0.15);
+    border-radius: 4px;
+    padding: 5px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: 16px;
+  }
+  .schema-toggle:hover { background: rgba(0,212,255,0.12); color: var(--cyan); }
+  .schema-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.8;
+    margin-bottom: 24px;
+    white-space: pre;
+    overflow-x: auto;
+    display: none;
+  }
+  .schema-box.open { display: block; }
+
+  /* Query input area */
+  .query-area {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 28px;
+    transition: border-color 0.2s;
+  }
+  .query-area:focus-within { border-color: rgba(0,255,136,0.35); }
+
+  .query-bar {
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    height: 36px;
+    gap: 8px;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot.r { background: #ff5f57; }
+  .dot.y { background: #febc2e; }
+  .dot.g { background: #28c840; }
+  .bar-label { margin-left: auto; font-size: 10px; color: var(--text-dimmer); letter-spacing: 1px; }
+
+  .query-input-wrap {
+    display: flex;
+    align-items: flex-start;
+    padding: 14px 18px;
+    gap: 10px;
+  }
+  .prompt-prefix {
+    color: var(--green);
+    font-size: 15px;
+    padding-top: 2px;
+    flex-shrink: 0;
+  }
+  #queryInput {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    line-height: 1.6;
+    resize: none;
+    min-height: 52px;
+    caret-color: var(--green);
+  }
+  #queryInput::placeholder { color: var(--text-dimmer); font-style: italic; }
+
+  .query-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 18px 14px;
+  }
+  .example-chips {
+    display: flex; flex-wrap: wrap; gap: 6px;
+  }
+  .chip {
+    font-size: 10px; font-family: var(--mono);
+    color: var(--text-dimmer);
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 9px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .chip:hover { color: var(--text); border-color: var(--border2); }
+
+  #runBtn {
+    background: var(--green);
+    color: #000;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 20px;
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex; align-items: center; gap: 8px;
+  }
+  #runBtn:hover { background: #00ffaa; transform: translateY(-1px); }
+  #runBtn:active { transform: translateY(0); }
+  #runBtn:disabled { background: var(--border2); color: var(--text-dimmer); transform: none; cursor: not-allowed; }
+
+  /* Execution log */
+  #execLog { display: flex; flex-direction: column; gap: 12px; }
+
+  .log-entry {
+    border-radius: 8px;
+    overflow: hidden;
+    animation: fadeSlide 0.25s ease;
+  }
+  @keyframes fadeSlide {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Step entry */
+  .entry-step {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: 12px; color: var(--text-dim);
+  }
+  .entry-step .badge {
+    font-size: 10px; padding: 2px 8px;
+    border-radius: 3px;
+    background: rgba(0,212,255,0.1);
+    color: var(--cyan);
+    border: 1px solid rgba(0,212,255,0.2);
+    white-space: nowrap;
+    font-weight: 500;
+  }
+
+  /* SQL entry */
+  .entry-sql {
+    background: var(--surface);
+    border: 1px solid var(--border);
+  }
+  .entry-sql .sql-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 14px;
+    background: rgba(0,255,136,0.04);
+    border-bottom: 1px solid var(--border);
+  }
+  .entry-sql .sql-header .lbl {
+    font-size: 10px; color: var(--green); letter-spacing: 2px; text-transform: uppercase; font-weight: 500;
+  }
+  .entry-sql .attempt-badge {
+    font-size: 10px; color: var(--text-dim);
+  }
+  .entry-sql pre {
+    padding: 14px 18px;
+    font-size: 13px;
+    color: #e0f0ff;
+    overflow-x: auto;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* SQL keyword highlighting */
+  .kw { color: var(--cyan); font-weight: 500; }
+  .fn { color: var(--yellow); }
+  .str { color: #ffb86c; }
+  .num { color: #bd93f9; }
+  .cmt { color: var(--text-dimmer); font-style: italic; }
+
+  /* Error entry */
+  .entry-error {
+    background: var(--red-muted);
+    border: 1px solid rgba(255,68,68,0.25);
+  }
+  .entry-error .err-header {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px;
+    border-bottom: 1px solid rgba(255,68,68,0.15);
+    font-size: 10px; color: var(--red); letter-spacing: 2px; text-transform: uppercase;
+  }
+  .entry-error pre {
+    padding: 10px 18px;
+    font-size: 12px; color: #ff8888;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+
+  /* Result table */
+  .entry-result {
+    background: var(--surface);
+    border: 1px solid rgba(0,255,136,0.2);
+  }
+  .result-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(0,255,136,0.05);
+    border-bottom: 1px solid rgba(0,255,136,0.12);
+  }
+  .result-header .lbl {
+    font-size: 10px; color: var(--green); letter-spacing: 2px; text-transform: uppercase; font-weight: 500;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .result-count {
+    font-size: 11px; font-family: var(--mono);
+    color: var(--text-dim);
+    background: rgba(0,255,136,0.08);
+    border: 1px solid rgba(0,255,136,0.15);
+    padding: 2px 10px; border-radius: 20px;
+  }
+  .llm-calls-badge {
+    font-size: 10px; color: var(--text-dimmer);
+  }
+  .table-wrap { overflow-x: auto; }
+  table {
+    width: 100%; border-collapse: collapse;
+    font-size: 12px;
+  }
+  thead tr {
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+  thead th {
+    padding: 9px 14px;
+    text-align: left;
+    color: var(--cyan-dim);
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+  tbody tr:last-child { border-bottom: none; }
+  tbody td {
+    padding: 8px 14px;
+    color: var(--text);
+    font-size: 12px;
+  }
+  .null-val { color: var(--text-dimmer); font-style: italic; }
+  .empty-result {
+    padding: 24px;
+    text-align: center;
+    color: var(--text-dimmer);
+    font-size: 12px;
+  }
+
+  /* Fatal */
+  .entry-fatal {
+    background: rgba(255,68,68,0.06);
+    border: 1px solid rgba(255,68,68,0.3);
+    padding: 14px 18px;
+    font-size: 13px;
+    color: var(--red);
+  }
+
+  /* Loading spinner */
+  .spinner {
+    width: 12px; height: 12px;
+    border: 2px solid transparent;
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+    display: inline-block;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit:scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* History sidebar hint */
+  .history-label {
+    font-size: 10px; color: var(--text-dimmer); letter-spacing: 1.5px;
+    text-transform: uppercase; margin-bottom: 10px; margin-top: 28px;
+  }
+  .history-item {
+    font-size: 11px; color: var(--text-dim);
+    padding: 6px 12px;
+    border-left: 2px solid var(--border);
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .history-item:hover { border-left-color: var(--green); color: var(--text); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <div class="logo-text">
+        <div class="logo-title">SQL Agent</div>
+        <div class="logo-subtitle">Self-Correcting · NL → SQL</div>
+      </div>
+    </div>
+    <div class="status-bar">
+      <div class="status-dot"></div>
+      <span>MySQl · demo.db</span>
+    </div>
+  </header>
+
+  <button class="schema-toggle" onclick="toggleSchema()">
+    ⬡ VIEW SCHEMA
+  </button>
+  <div class="schema-box" id="schemaBox">Loading schema...</div>
+
+  <div class="query-area">
+    <div class="query-bar">
+      <div class="dot r"></div><div class="dot y"></div><div class="dot g"></div>
+      <span class="bar-label">NATURAL LANGUAGE QUERY</span>
+    </div>
+    <div class="query-input-wrap">
+      <span class="prompt-prefix">›</span>
+      <textarea id="queryInput" rows="2"
+        placeholder="Ask anything… e.g. 'Show me top 3 customers by total spending'"
+        onkeydown="handleKey(event)"></textarea>
+    </div>
+    <div class="query-footer">
+      <div class="example-chips" id="chips"></div>
+      <button id="runBtn" onclick="runQuery()">
+        <span id="runLabel">RUN</span>
+        <span>⌘↵</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="execLog"></div>
+
+  <div id="historySection" style="display:none">
+    <div class="history-label">Recent Queries</div>
+    <div id="historyList"></div>
+  </div>
+
+</div>
+
+<script>
+const EXAMPLES = [
+  "Top 3 customers by spending",
+  "All pending orders with customer names",
+  "Products low in stock (under 20)",
+  "Revenue by product category",
+  "Customers who never ordered",
+  "Monthly order count in 2024",
+];
+
+const history = [];
+
+function buildChips() {
+  const wrap = document.getElementById("chips");
+  EXAMPLES.forEach(ex => {
+    const chip = document.createElement("button");
+    chip.className = "chip";
+    chip.textContent = ex;
+    chip.onclick = () => { document.getElementById("queryInput").value = ex; runQuery(); };
+    wrap.appendChild(chip);
+  });
+}
+
+async function toggleSchema() {
+  const box = document.getElementById("schemaBox");
+  box.classList.toggle("open");
+  if (box.classList.contains("open") && box.textContent === "Loading schema...") {
+    const r = await fetch("/schema");
+    const d = await r.json();
+    box.textContent = d.schema;
+  }
+}
+
+function handleKey(e) {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); runQuery(); }
+}
+
+function escHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function highlightSQL(sql) {
+  const keywords = /\b(SELECT|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|ON|GROUP BY|ORDER BY|HAVING|LIMIT|OFFSET|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|AS|AND|OR|NOT|IN|LIKE|BETWEEN|IS|NULL|DISTINCT|UNION|ALL|COUNT|SUM|AVG|MIN|MAX|ROUND|COALESCE|CASE|WHEN|THEN|ELSE|END|BY|ASC|DESC|WITH|REFERENCES|PRIMARY|KEY|UNIQUE|CHECK|DEFAULT)\b/gi;
+  const fns = /\b(COUNT|SUM|AVG|MIN|MAX|ROUND|COALESCE|IFNULL|STRFTIME|DATE|UPPER|LOWER|TRIM|LENGTH|SUBSTR|CAST)\b/gi;
+  let h = escHtml(sql);
+  h = h.replace(/'[^']*'/g, s => `<span class="str">${s}</span>`);
+  h = h.replace(/\b\d+(\.\d+)?\b/g, s => `<span class="num">${s}</span>`);
+  h = h.replace(keywords, s => `<span class="kw">${s.toUpperCase()}</span>`);
+  return h;
+}
+
+function addStep(msg, llmCall) {
+  const log = document.getElementById("execLog");
+  const d = document.createElement("div");
+  d.className = "log-entry entry-step";
+  d.innerHTML = `
+    <span class="spinner"></span>
+    <span>${escHtml(msg)}</span>
+    ${llmCall ? `<span class="badge">LLM CALL #${llmCall}</span>` : ""}
+  `;
+  log.appendChild(d);
+  d.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+function addSQL(sql, attempt) {
+  const log = document.getElementById("execLog");
+  const d = document.createElement("div");
+  d.className = "log-entry entry-sql";
+  d.innerHTML = `
+    <div class="sql-header">
+      <span class="lbl">Generated SQL</span>
+      <span class="attempt-badge">Attempt ${attempt}</span>
+    </div>
+    <pre>${highlightSQL(sql)}</pre>
+  `;
+  log.appendChild(d);
+  d.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+function addError(error) {
+  const log = document.getElementById("execLog");
+  const d = document.createElement("div");
+  d.className = "log-entry entry-error";
+  d.innerHTML = `
+    <div class="err-header">⚠ Execution Error</div>
+    <pre>${escHtml(error)}</pre>
+  `;
+  log.appendChild(d);
+  d.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+function addResult(rows, count, llmCalls) {
+  const log = document.getElementById("execLog");
+  const d = document.createElement("div");
+  d.className = "log-entry entry-result";
+
+  let tableHtml = "";
+  if (rows.length === 0) {
+    tableHtml = `<div class="empty-result">No rows returned</div>`;
+  } else {
+    const cols = Object.keys(rows[0]);
+    const thead = cols.map(c => `<th>${escHtml(c)}</th>`).join("");
+    const tbody = rows.map(row =>
+      `<tr>${cols.map(c => {
+        const v = row[c];
+        return v === null ? `<td><span class="null-val">NULL</span></td>`
+                          : `<td>${escHtml(v)}</td>`;
+      }).join("")}</tr>`
+    ).join("");
+    tableHtml = `<div class="table-wrap"><table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table></div>`;
+  }
+
+  d.innerHTML = `
+    <div class="result-header">
+      <span class="lbl">✓ Results <span class="result-count">${count} row${count !== 1 ? "s" : ""}</span></span>
+      <span class="llm-calls-badge">${llmCalls} LLM call${llmCalls !== 1 ? "s" : ""} total</span>
+    </div>
+    ${tableHtml}
+  `;
+  log.appendChild(d);
+  d.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+
+function addFatal(msg) {
+  const log = document.getElementById("execLog");
+  const d = document.createElement("div");
+  d.className = "log-entry entry-fatal";
+  d.textContent = msg;
+  log.appendChild(d);
+}
+
+async function runQuery() {
+  const q = document.getElementById("queryInput").value.trim();
+  if (!q) return;
+
+  document.getElementById("execLog").innerHTML = "";
+  const btn = document.getElementById("runBtn");
+  const lbl = document.getElementById("runLabel");
+  btn.disabled = true;
+  lbl.innerHTML = '<span class="spinner"></span>';
+
+  // Add to history
+  history.unshift(q);
+  if (history.length > 8) history.pop();
+  renderHistory();
+
+  const evtSource = new EventSource(`/query?q=${encodeURIComponent(q)}`);
+  evtSource.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    if (data.type === "step") {
+      addStep(data.msg, data.llm_call);
+    } else if (data.type === "sql") {
+      addSQL(data.sql, data.attempt);
+    } else if (data.type === "error_sql") {
+      addError(data.error);
+    } else if (data.type === "result") {
+      addResult(data.rows, data.count, data.total_llm_calls);
+      evtSource.close();
+      finish();
+    } else if (data.type === "fatal") {
+      addFatal(data.msg);
+      evtSource.close();
+      finish();
+    } else if (data.type === "error") {
+      addFatal(data.msg);
+      evtSource.close();
+      finish();
+    }
+  };
+  evtSource.onerror = () => { evtSource.close(); finish(); };
+
+  function finish() {
+    btn.disabled = false;
+    lbl.textContent = "RUN";
+  }
+}
+
+function renderHistory() {
+  const sec = document.getElementById("historySection");
+  const list = document.getElementById("historyList");
+  if (history.length === 0) { sec.style.display = "none"; return; }
+  sec.style.display = "block";
+  list.innerHTML = history.map(q =>
+    `<div class="history-item" onclick="document.getElementById('queryInput').value=this.dataset.q; runQuery()" data-q="${escHtml(q)}">${escHtml(q)}</div>`
+  ).join("");
+}
+
+buildChips();
+</script>
+</body>
+</html>
